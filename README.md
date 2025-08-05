@@ -70,8 +70,8 @@ sudo ./install-komari.sh
 
 1. Build the frontend static files:
    ```bash
-   git clone https://github.com/dbedu/komari-web
-   cd komari-web
+   git clone https://github.com/dbedu/komari-web-netify
+   cd komari-web-netify
    npm install
    npm run build
    ```
