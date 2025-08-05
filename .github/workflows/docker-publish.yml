@@ -28,7 +28,7 @@ jobs:
 
       - name: Clone and build frontend
         run: |
-          git clone https://github.com/dbedu/komari-web web
+          git clone https://github.com/dbedu/komari-web-netify web
           cd web
           npm install
           npm run build
