@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -69,7 +70,18 @@ func (g *Github) OnCallback(ctx context.Context, state string, query map[string]
 	req.URL.RawQuery = data.Encode()
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	// Create HTTP client with TLS configuration to handle certificate issues
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: false, // Keep secure by default
+				MinVersion:         tls.VersionTLS12,
+			},
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return factory.OidcCallback{}, fmt.Errorf("failed to get access token: %v", err)
 	}
@@ -90,7 +102,7 @@ func (g *Github) OnCallback(ctx context.Context, state string, query map[string]
 	userReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
 	userReq.Header.Set("Accept", "application/json")
 
-	userResp, err := http.DefaultClient.Do(userReq)
+	userResp, err := client.Do(userReq)
 	if err != nil {
 		return factory.OidcCallback{}, fmt.Errorf("failed to get user info: %v", err)
 	}
