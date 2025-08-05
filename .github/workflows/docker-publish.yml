@@ -1,4 +1,4 @@
-name: Publish Docker Image on Main
+name: 🐳 Main Branch Docker Publisher
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
   workflow_dispatch:
 
-run-name: 🐳 Docker Publish by @${{ github.actor }} for commit ${{ substr(github.sha, 0, 7) }}
+run-name: 🐳 Docker Publish by @${{ github.actor }} for commit ${{ github.sha }}
 
 env:
   REGISTRY: ghcr.io
