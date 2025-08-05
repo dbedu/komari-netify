@@ -93,3 +93,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # 添加以下行来启用构建日志
+          build-args: |
+            BUILDKIT_STEP_LOG_MAX_SIZE=10485760
+          # 添加构建缓存
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
