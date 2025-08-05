@@ -25,5 +25,7 @@ jobs:
         ghcr.io/${{ github.repository }}:${{ github.event.release.tag_name }}
         ghcr.io/${{ github.repository }}:latest
       push: true
+      # 发布版本构建多架构支持
+      build_arm64: true
     secrets:
       DOCKER_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}

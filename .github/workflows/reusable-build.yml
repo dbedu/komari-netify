@@ -1,7 +1,6 @@
 # 可复用的构建工作流
 name: 🔄 Reusable Docker Build Workflow
 
-
 on:
   workflow_call:
     inputs:
@@ -11,6 +10,14 @@ on:
       push:
         required: true
         type: boolean
+      platforms:
+        required: false
+        type: string
+        default: "linux/amd64"
+      build_arm64:
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOCKER_REGISTRY_TOKEN:
         required: true
@@ -20,12 +27,9 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  # 前端构建作业 - 只需要执行一次
+  build-frontend:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,6 +49,76 @@ jobs:
           mkdir -p public/dist
           cp -r web/dist/* public/dist/
 
+      - name: Upload frontend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: public/dist/
+          retention-days: 1
+
+  # AMD64 构建作业 - 快速构建
+  build-amd64:
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: public/dist/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+
+      - name: Build and push AMD64 Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ inputs.push }}
+          platforms: linux/amd64
+          tags: ${{ inputs.tags }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            VERSION_HASH=${{ github.sha }}
+            BUILDKIT_STEP_LOG_MAX_SIZE=10485760
+          # AMD64 专用缓存
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,mode=max,scope=amd64
+
+  # ARM64 构建作业 - 仅在需要时执行
+  build-arm64:
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    if: ${{ inputs.build_arm64 }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: public/dist/
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -58,18 +132,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push ARM64 Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: ${{ inputs.push }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
           tags: ${{ inputs.tags }}
           build-args: |
             VERSION=${{ github.ref_name }}
             VERSION_HASH=${{ github.sha }}
             BUILDKIT_STEP_LOG_MAX_SIZE=10485760
-          # 使用 GHA 进行构建缓存，将大幅提升后续构建速度
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # ARM64 专用缓存
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=arm64

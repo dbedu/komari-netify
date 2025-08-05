@@ -26,5 +26,7 @@ jobs:
         ghcr.io/${{ github.repository }}:${{ github.ref_name }}
         ghcr.io/${{ github.repository }}:${{ github.sha }}
       push: true
+      # 主分支推送只构建 AMD64，提高速度
+      build_arm64: false
     secrets:
       DOCKER_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
