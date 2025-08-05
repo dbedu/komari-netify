@@ -30,6 +30,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "23"
+
+      - name: Clone and build frontend
+        run: |
+          git clone https://github.com/dbedu/komari-web-netify.git web
+          cd web
+          npm install
+          npm run build
+          cd ..
+          mkdir -p public/dist
+          cp -r web/dist/* public/dist/
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

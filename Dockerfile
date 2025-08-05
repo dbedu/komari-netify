@@ -4,13 +4,13 @@
 FROM node:23-alpine AS frontend-builder
 WORKDIR /app
 
-# 克隆前端仓库 (更好的方式是使用 git submodules)
-# hadolint ignore=DL3002
-RUN git clone https://github.com/dbedu/komari-web-netify.git .
+# 创建前端构建目录
+RUN mkdir -p /app
 
-# 安装依赖并构建，这一层会被缓存
-RUN npm install
-RUN npm run build
+# 复制前端代码 (假设前端代码已经在构建上下文中)
+COPY ./public/dist/ /app/dist/
+
+# 注意：此处不再从远程仓库克隆，而是假设前端资源已经在本地准备好
 
 #---------------------------------
 # Stage 2: Build Backend
