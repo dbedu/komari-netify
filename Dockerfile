@@ -1,54 +1,70 @@
-# Build stage
-FROM golang:1.24-bookworm AS builder
+#---------------------------------
+# Stage 1: Build Frontend
+#---------------------------------
+FROM node:23-alpine AS frontend-builder
+WORKDIR /app
 
-# Install Zig compiler
-RUN apt-get update && apt-get install -y wget xz-utils \
-    && wget https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz \
-    && tar -C /usr/local -Jxf zig-x86_64-linux-0.14.1.tar.xz \
-    && rm zig-x86_64-linux-0.14.1.tar.xz
-ENV PATH="/usr/local/zig-x86_64-linux-0.14.1:${PATH}"
+# 克隆前端仓库 (更好的方式是使用 git submodules)
+# hadolint ignore=DL3002
+RUN git clone https://github.com/dbedu/komari-web-netify.git .
 
-WORKDIR /build
+# 安装依赖并构建，这一层会被缓存
+RUN npm install
+RUN npm run build
 
-# Copy go.mod and go.sum first to leverage Docker cache
-COPY go.mod go.sum ./
-RUN go mod download
+#---------------------------------
+# Stage 2: Build Backend
+#---------------------------------
+FROM golang:1.23-alpine AS backend-builder
 
-# Copy the source code
-COPY . .
-
-# Build the binary
-ARG TARGETOS
-ARG TARGETARCH
-ENV CGO_ENABLED=1
-ENV GIN_MODE=release
-
-# Set timeout for go commands to prevent hanging
-ENV GO_BUILD_TIMEOUT=10m
-
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        CC="zig cc -target x86_64-linux-musl" go build -trimpath -o komari ; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        # Use timeout to prevent hanging builds
-        timeout $GO_BUILD_TIMEOUT CC="zig cc -target aarch64-linux-musl" go build -trimpath -o komari || \
-        # Fallback to native Go build if Zig times out
-        echo "Zig build timed out, falling back to native Go build" && \
-        GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -o komari ; \
-    else \
-        echo "Unsupported architecture: $TARGETARCH" && exit 1; \
-    fi
-
-# Final stage
-FROM debian:12-slim
-
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# 安装 Zig 用于 CGO 静态编译
+RUN apk add --no-cache zig
 
 WORKDIR /app
 
-# Copy the binary from builder
-COPY --from=builder /build/komari /app/
-COPY --from=builder /build/public /app/public
+# 仅复制 Go 模块文件以利用层缓存
+COPY go.mod go.sum ./
+# 下载依赖，这一层会被缓存
+RUN go mod download
 
+# 复制所有剩余的源代码
+COPY . .
+
+# 使用 BuildKit 的内置变量 TARGETARCH 来进行跨平台编译
+# 定义构建参数，可以从外部传入版本信息
+ARG VERSION="dev"
+ARG VERSION_HASH="unknown"
+ARG TARGETARCH
+
+# 设置 LDFLAGS
+ENV LDFLAGS="-s -w -X github.com/dbedu/komari-netify/utils.CurrentVersion=${VERSION} -X github.com/dbedu/komari-netify/utils.VersionHash=${VERSION_HASH}"
+
+# 编译 Go 应用。Zig 的目标架构需要从 arm64 映射到 aarch64
+RUN <<EOT
+set -e
+if [ "${TARGETARCH}" = "arm64" ]; then
+    ZIG_TARGET="aarch64-linux-musl"
+else
+    ZIG_TARGET="x86_64-linux-musl"
+fi
+CC="zig cc -target ${ZIG_TARGET}" CGO_ENABLED=1 go build -trimpath -ldflags="${LDFLAGS}" -o /komari
+EOT
+
+#---------------------------------
+# Stage 3: Final Image
+#---------------------------------
+FROM scratch
+
+# 设置工作目录
+WORKDIR /app
+
+# 从后端构建器复制编译好的二进制文件
+COPY --from=backend-builder /komari /app/komari
+
+# 从前端构建器复制构建好的静态资源
+COPY --from=frontend-builder /app/dist/ /app/public/dist/
+
+# 暴露端口
 EXPOSE 25774
 
 VOLUME ["/app/data"]
