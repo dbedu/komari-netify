@@ -21,7 +21,7 @@ jobs:
       
       - name: Clone and build frontend
         run: |
-          git clone https://github.com/komari-monitor/komari-web web
+          git clone https://github.com/dbedu/komari-web web
           cd web
           npm install
           npm run build
@@ -40,7 +40,7 @@ jobs:
           GOARCH: amd64
         run: |
           VERSION_SHA="${{ github.sha }}"
-          go build -ldflags "-X github.com/komari-monitor/komari/utils.CurrentVersion=dev -X github.com/komari-monitor/komari/utils.VersionHash=${VERSION_SHA}" -o komari .
+          go build -ldflags "-X github.com/dbedu/komari-netify/utils.CurrentVersion=dev -X github.com/dbedu/komari-netify/utils.VersionHash=${VERSION_SHA}" -o komari .
 
       - name: Upload binary as artifact
         uses: actions/upload-artifact@v4

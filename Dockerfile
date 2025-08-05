@@ -1,17 +1,38 @@
-FROM alpine:3.21
+# Build stage
+FROM golang:1.23-bookworm AS builder
+
+WORKDIR /build
+
+# Copy go.mod and go.sum first to leverage Docker cache
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source code
+COPY . .
+
+# Build the application
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o komari .
+
+# Final stage
+FROM debian:12-slim
 
 WORKDIR /app
 
-# Docker buildx 会在构建时自动填充这些变量
-ARG TARGETOS
-ARG TARGETARCH
+# Install required dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apk add --no-cache tzdata
+# Copy the binary from the builder stage
+COPY --from=builder /build/komari /app/komari
 
-COPY komari-${TARGETOS}-${TARGETARCH} /app/komari
+# Create data directory
+RUN mkdir -p /app/data && chmod +x /app/komari
 
-RUN chmod +x /app/komari
-
+# Set environment variables
 ENV GIN_MODE=release
 ENV KOMARI_DB_TYPE=sqlite
 ENV KOMARI_DB_FILE=/app/data/komari.db
