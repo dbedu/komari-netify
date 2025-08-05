@@ -6,6 +6,8 @@ on:
       - main
   workflow_dispatch:
 
+run-name: 🐳 Docker Publish by @${{ github.actor }} for commit ${{ substr(github.sha, 0, 7) }}
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}

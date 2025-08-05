@@ -5,6 +5,8 @@ on:
     types: [published]
   workflow_dispatch:
 
+run-name: 🚀 Publish Release ${{ github.event.release.tag_name }}
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
