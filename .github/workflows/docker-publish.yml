@@ -15,6 +15,9 @@ env:
 jobs:
   call-reusable-build:
     name: Build and Push Main Image
+    permissions:
+      contents: read
+      packages: write
     # 使用可复用工作流
     uses: ./.github/workflows/reusable-build.yml
     with:
