@@ -19,8 +19,8 @@ jobs:
     with:
       # 生成镜像标签：一个基于 release tag，一个标记为 latest
       tags: |
-        ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}
-        ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        ghcr.io/${{ github.repository }}:${{ github.event.release.tag_name }}
+        ghcr.io/${{ github.repository }}:latest
       push: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}

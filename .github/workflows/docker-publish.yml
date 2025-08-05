@@ -20,8 +20,8 @@ jobs:
     with:
       # 生成镜像标签：一个基于分支名，一个基于 commit SHA
       tags: |
-        ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-        ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+        ghcr.io/${{ github.repository }}:${{ github.sha }}
       push: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
