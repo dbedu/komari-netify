@@ -30,13 +30,10 @@ func OAuth(c *gin.Context) {
 
 // /api/oauth_callback
 func OAuthCallback(c *gin.Context) {
-	// 验证state防止CSRF攻击
-	state, _ := c.Cookie("oauth_state")
+	// 获取state，OAuth提供者层会进行验证
+	state := c.Query("state")
+	// 清除state cookie
 	c.SetCookie("oauth_state", "", -1, "/", "", false, true)
-	if state == "" || state != c.Query("state") {
-		c.JSON(400, gin.H{"status": "error", "error": "Invalid state"})
-		return
-	}
 
 	queries := make(map[string]string)
 	for key, values := range c.Request.URL.Query() {

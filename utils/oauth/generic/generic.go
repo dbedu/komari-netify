@@ -23,7 +23,7 @@ func (g *Generic) GetConfiguration() factory.Configuration {
 func (g *Generic) GetAuthorizationURL(redirectURI string) (string, string) {
 	state := utils.GenerateRandomString(16)
 
-	// 构建GitHub OAuth授权URL
+	// 构建OAuth授权URL
 	authURL := fmt.Sprintf(
 		"%s?client_id=%s&state=%s&scope=%s&redirect_uri=%s&response_type=code",
 		g.Addition.AuthURL,
@@ -42,12 +42,14 @@ func (g *Generic) OnCallback(ctx context.Context, state string, query map[string
 	if g.stateCache == nil {
 		return factory.OidcCallback{}, fmt.Errorf("state cache not initialized")
 	}
-	if _, ok := g.stateCache.Get(state); !ok {
-		return factory.OidcCallback{}, fmt.Errorf("invalid state")
-	}
 	if state == "" {
 		return factory.OidcCallback{}, fmt.Errorf("invalid state")
 	}
+	// 原子性地检查并删除state，防止重复使用和竞态条件
+	if _, ok := g.stateCache.Get(state); !ok {
+		return factory.OidcCallback{}, fmt.Errorf("invalid state")
+	}
+	g.stateCache.Delete(state)
 
 	// 获取code
 	if code == "" {
@@ -72,12 +74,29 @@ func (g *Generic) OnCallback(ctx context.Context, state string, query map[string
 	}
 	defer resp.Body.Close()
 
+	// 检查HTTP状态码
+	if resp.StatusCode != http.StatusOK {
+		return factory.OidcCallback{}, fmt.Errorf("OAuth API returned status %d", resp.StatusCode)
+	}
+
 	var tokenResp struct {
-		AccessToken string `json:"access_token"`
+		AccessToken      string `json:"access_token"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return factory.OidcCallback{}, fmt.Errorf("failed to parse access token response: %v", err)
+	}
+
+	// 检查OAuth返回的错误
+	if tokenResp.Error != "" {
+		return factory.OidcCallback{}, fmt.Errorf("OAuth error: %s - %s", tokenResp.Error, tokenResp.ErrorDescription)
+	}
+
+	// 验证访问令牌不为空
+	if tokenResp.AccessToken == "" {
+		return factory.OidcCallback{}, fmt.Errorf("received empty access token")
 	}
 
 	// 获取用户信息
@@ -91,6 +110,11 @@ func (g *Generic) OnCallback(ctx context.Context, state string, query map[string
 	}
 	defer userResp.Body.Close()
 
+	// 检查用户信息请求的HTTP状态码
+	if userResp.StatusCode != http.StatusOK {
+		return factory.OidcCallback{}, fmt.Errorf("user info API returned status %d", userResp.StatusCode)
+	}
+
 	var user map[string]interface{}
 	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {
 		return factory.OidcCallback{}, fmt.Errorf("failed to parse user info response: %v", err)
@@ -99,6 +123,11 @@ func (g *Generic) OnCallback(ctx context.Context, state string, query map[string
 	userId, ok := user[g.Addition.UserIDField]
 	if !ok {
 		return factory.OidcCallback{}, fmt.Errorf("user id field '%s' not found in user info response", g.Addition.UserIDField)
+	}
+
+	// 验证用户ID不为空
+	if userId == nil || fmt.Sprintf("%v", userId) == "" {
+		return factory.OidcCallback{}, fmt.Errorf("received invalid user ID")
 	}
 
 	return factory.OidcCallback{UserId: fmt.Sprintf("%v", userId)}, nil

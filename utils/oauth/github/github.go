@@ -14,10 +14,6 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-func init() {
-
-}
-
 func (g *Github) GetName() string {
 	return "github"
 }
@@ -25,14 +21,15 @@ func (g *Github) GetConfiguration() factory.Configuration {
 	return &g.Addition
 }
 
-func (g *Github) GetAuthorizationURL(_ string) (string, string) {
+func (g *Github) GetAuthorizationURL(redirectURI string) (string, string) {
 	state := utils.GenerateRandomString(16)
 
 	// 构建GitHub OAuth授权URL
 	authURL := fmt.Sprintf(
-		"https://github.com/login/oauth/authorize?client_id=%s&state=%s&scope=user:email",
+		"https://github.com/login/oauth/authorize?client_id=%s&state=%s&scope=user:email&redirect_uri=%s",
 		url.QueryEscape(g.Addition.ClientId),
 		url.QueryEscape(state),
+		url.QueryEscape(redirectURI),
 	)
 	g.stateCache.Set(state, true, cache.NoExpiration)
 	return authURL, state
@@ -45,12 +42,14 @@ func (g *Github) OnCallback(ctx context.Context, state string, query map[string]
 	if g.stateCache == nil {
 		return factory.OidcCallback{}, fmt.Errorf("state cache not initialized")
 	}
-	if _, ok := g.stateCache.Get(state); !ok {
-		return factory.OidcCallback{}, fmt.Errorf("invalid state")
-	}
 	if state == "" {
 		return factory.OidcCallback{}, fmt.Errorf("invalid state")
 	}
+	// 原子性地检查并删除state，防止重复使用和竞态条件
+	if _, ok := g.stateCache.Get(state); !ok {
+		return factory.OidcCallback{}, fmt.Errorf("invalid state")
+	}
+	g.stateCache.Delete(state)
 
 	// 获取code
 	//code := c.Query("code")
@@ -87,14 +86,31 @@ func (g *Github) OnCallback(ctx context.Context, state string, query map[string]
 	}
 	defer resp.Body.Close()
 
+	// 检查HTTP状态码
+	if resp.StatusCode != http.StatusOK {
+		return factory.OidcCallback{}, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
 	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
-		Scope       string `json:"scope"`
+		AccessToken      string `json:"access_token"`
+		TokenType        string `json:"token_type"`
+		Scope            string `json:"scope"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return factory.OidcCallback{}, fmt.Errorf("failed to parse access token response: %v", err)
+	}
+
+	// 检查GitHub返回的错误
+	if tokenResp.Error != "" {
+		return factory.OidcCallback{}, fmt.Errorf("GitHub OAuth error: %s - %s", tokenResp.Error, tokenResp.ErrorDescription)
+	}
+
+	// 验证访问令牌不为空
+	if tokenResp.AccessToken == "" {
+		return factory.OidcCallback{}, fmt.Errorf("received empty access token from GitHub")
 	}
 
 	// 获取用户信息
@@ -108,9 +124,19 @@ func (g *Github) OnCallback(ctx context.Context, state string, query map[string]
 	}
 	defer userResp.Body.Close()
 
+	// 检查用户信息请求的HTTP状态码
+	if userResp.StatusCode != http.StatusOK {
+		return factory.OidcCallback{}, fmt.Errorf("GitHub user API returned status %d", userResp.StatusCode)
+	}
+
 	var githubUser GitHubUser
 	if err := json.NewDecoder(userResp.Body).Decode(&githubUser); err != nil {
 		return factory.OidcCallback{}, fmt.Errorf("failed to parse user info response: %v", err)
+	}
+
+	// 验证用户ID不为空
+	if githubUser.ID == 0 {
+		return factory.OidcCallback{}, fmt.Errorf("received invalid user ID from GitHub")
 	}
 
 	return factory.OidcCallback{UserId: fmt.Sprintf("%d", githubUser.ID)}, nil
