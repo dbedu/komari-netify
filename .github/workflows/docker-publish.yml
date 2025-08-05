@@ -56,12 +56,19 @@ jobs:
           VERSION="${{ github.ref_name }}"
           VERSION_HASH="${{ github.sha }}"
           LDFLAGS="-s -w -X github.com/dbedu/komari-netify/utils.CurrentVersion=${VERSION} -X github.com/dbedu/komari-netify/utils.VersionHash=${VERSION_HASH}"
+          
+          # Set timeout for go commands to prevent hanging
+          GO_BUILD_TIMEOUT=10m
 
           echo "Building for linux/amd64..."
           GOARCH=amd64 CC="zig cc -target x86_64-linux-musl" go build -trimpath -ldflags="$LDFLAGS" -o komari-linux-amd64
 
           echo "Building for linux/arm64..."
-          GOARCH=arm64 CC="zig cc -target aarch64-linux-musl" go build -trimpath -ldflags="$LDFLAGS" -o komari-linux-arm64
+          # Try with Zig first with timeout
+          timeout $GO_BUILD_TIMEOUT bash -c "GOARCH=arm64 CC=\"zig cc -target aarch64-linux-musl\" go build -trimpath -ldflags=\"$LDFLAGS\" -o komari-linux-arm64" || \
+          # Fallback to native Go build if Zig times out
+          (echo "Zig build timed out, falling back to native Go build" && \
+          GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o komari-linux-arm64)
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
