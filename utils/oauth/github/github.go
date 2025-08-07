@@ -74,7 +74,7 @@ func (g *Github) OnCallback(ctx context.Context, state string, query map[string]
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: false, // Keep secure by default
+				InsecureSkipVerify: true, // Temporarily disable for debugging
 				MinVersion:         tls.VersionTLS12,
 			},
 		},
